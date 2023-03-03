@@ -1,0 +1,214 @@
+---
+# Copyright 2023 Electromech Cloudtech Private Limited
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata:
+  License: Apache-2.0
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Parent Stacks'
+        Parameters:
+        - ParentAlertStack
+      - Label:
+          default: "No-Days"
+        Parameters:
+          - NODAYS
+Description: 'EC2 Alert'
+Parameters:
+  ParentAlertStack:
+    Description: 'Optional but recommended stack name of parent alert stack based on https://github.com/kkpkishan/AWS-SNS/blob/master/alert.yaml template.'
+    Type: String
+    Default: ''
+  NODAYS:
+    Description: 'Retrieve the number of days AWS Cloudwatch data'
+    Type: Number
+    Default: 1
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+Conditions:
+  HasAlertTopic: !Not [!Equals [!Ref ParentAlertStack, '']]
+
+Resources:
+  EC2AlertFunction:
+    Condition: HasAlertTopic
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Timeout: 600
+      Role: !GetAtt [LambdaExecutionRole, Arn]
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import datetime
+          import os
+          
+          def lambda_handler(event, context):
+              # Get the number of days to retrieve from environment variable
+              days = int(os.environ['DAYS'])
+          
+              # Initialize the CloudWatch client
+              cloudwatch = boto3.client('cloudwatch')
+          
+              # Set the metric names and namespaces
+              metric_names = ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'CPUCreditBalance', 'EBSIOBalance', 'mem_used_percent', 'disk_used_percent']
+              namespaces = ['AWS/EC2', 'AWS/EC2', 'AWS/EC2', 'AWS/EC2', 'AWS/EBS', 'CWAgent', 'CWAgent']
+          
+              # Retrieve a list of all instances in the account
+              ec2 = boto3.resource('ec2')
+              instances = ec2.instances.all()
+          
+              # Initialize a list to store the utilization values for each instance
+              utilization_values = []
+          
+              # Set the start and end times for the metrics query
+              current_time = datetime.datetime.utcnow()
+              end_time = current_time.replace(second=0, microsecond=0)
+              start_time = end_time - datetime.timedelta(days=days)
+          
+              # Loop through each instance and retrieve its utilization metrics
+              for instance in instances:
+                  # Get the instance ID
+                  instance_id = instance.id
+                  instance_name = ''
+          
+                  for tag in instance.tags:
+                      if tag['Key'] == 'Name':
+                          instance_name = tag['Value']
+                          break
+          
+                  # Initialize a dictionary to store the utilization values for this instance
+                  utilization = {'InstanceId': instance_id, 'InstanceName': instance_name}
+          
+                  # Loop through each metric and retrieve its value for the instance
+                  for i, metric_name in enumerate(metric_names):
+                      namespace = namespaces[i]
+          
+                      # Get the metric for the instance
+                      response = cloudwatch.get_metric_statistics(
+                          Namespace=namespace,
+                          MetricName=metric_name,
+                          Dimensions=[
+                              {
+                                  'Name': 'InstanceId',
+                                  'Value': instance_id
+                              },
+                          ],
+                          StartTime=start_time,
+                          EndTime=end_time,
+                          Period=3600,
+                          Statistics=['Average', 'Maximum'],
+                      )
+          
+                      # Extract the metric value from the response
+                      if 'Datapoints' in response and len(response['Datapoints']) > 0:
+                          avg_value = response['Datapoints'][0]['Average']
+                          max_value = response['Datapoints'][0]['Maximum']
+                      else:
+                          avg_value = 0
+                          max_value = 0
+          
+                      # Convert the NetworkIn and NetworkOut metrics to MB
+                      if metric_name == 'NetworkIn' or metric_name == 'NetworkOut':
+                          avg_value = avg_value / 1048576
+                          max_value = max_value / 1048576
+          
+                      # Convert the DiskUtilization metric to a percentage
+                      if metric_name == 'DiskUtilization':
+                          avg_value = avg_value * 100
+                          max_value = max_value * 100
+          
+                      # Round the values to two decimal places
+                      avg_value = round(avg_value, 2)
+                      max_value = round(max_value, 2)
+          
+                      # Add the metric values to the dictionary
+                      utilization[metric_name + ' (Avg)'] = avg_value
+                      utilization[metric_name + ' (Max)'] = max_value
+          
+                  # Add the maximum CPU and memory utilization values to the dictionary
+                  utilization['Max CPU Utilization'] = utilization.pop('CPUUtilization (Max)')
+                  utilization['Max Memory Utilization'] = utilization.pop('mem_used_percent (Max)')
+          
+                  # Add the utilization values for this instance to the list
+                  utilization_values.append(utilization)
+                  
+              # Initialize the SNS client
+              sns = boto3.client('sns')
+          
+              # Publish the utilization values to an SNS topic
+              topic_arn = os.environ['TOPIC_ARN']
+              message = {
+                  'StartTime': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                  'EndTime': end_time.strftime('%Y-%m-%d %H:%M:%S'),
+                  'UtilizationValues': utilization_values
+              }
+              response = sns.publish(
+                  TopicArn=topic_arn,
+                  Message=json.dumps(message),
+                  Subject='Utilization Report'
+              )
+          
+              # Print the response
+              print(response)
+      Runtime: python3.9
+      Environment:
+        Variables:
+          TOPIC_ARN: {'Fn::ImportValue': !Sub "${ParentAlertStack}-TopicARN"}
+          DAYS: !Ref NODAYS
+  # Create an IAM role for the Lambda function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action:
+          - 'sts:AssumeRole'
+          Effect: Allow
+          Principal:
+            Service:
+            - 'lambda.amazonaws.com'
+      Path: '/'
+      Policies:
+      - PolicyName: 'LambdaSNS-CloudWatchGetMetrics'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - sns:Publish
+            - cloudwatch:GetMetricData
+            - ec2:DescribeInstances
+            - cloudwatch:GetMetricStatistics
+            Resource: '*'
+            Effect: Allow
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          
+  # Create a Metrics event rule
+  MetricsAlertEventRule:
+    Type: AWS::Events::Rule
+    Condition: HasAlertTopic
+    Properties:
+      Description: 'Rule for MetricsAlert events'
+      ScheduleExpression: "cron(30 18 * * ? *)"
+      State: ENABLED
+      Targets:
+      - Arn: !GetAtt [EC2AlertFunction, Arn]
+        Id: EC2AlertFunction
