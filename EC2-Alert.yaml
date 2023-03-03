@@ -199,13 +199,13 @@ Resources:
             - logs:PutLogEvents
             Resource: arn:aws:logs:*:*:*
           
-  # Create a CloudTrail event rule
-  CloudTrailEventRule:
+  # Create a Metrics event rule
+  MetricsAlertEventRule:
     Type: AWS::Events::Rule
     Condition: HasAlertTopic
     Properties:
-      Description: 'Rule for CloudTrail events'
-      ScheduleExpression: "cron(18 30 * * ? *)"
+      Description: 'Rule for MetricsAlert events'
+      ScheduleExpression: "cron(30 18 * * ? *)"
       State: ENABLED
       Targets:
       - Arn: !GetAtt [EC2AlertFunction, Arn]
