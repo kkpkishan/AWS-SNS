@@ -190,6 +190,8 @@ Resources:
           - Action:
             - sns:Publish
             - cloudwatch:GetMetricData
+            - ec2:DescribeInstances
+            - cloudwatch:GetMetricStatistics
             Resource: '*'
             Effect: Allow
           - Effect: Allow
