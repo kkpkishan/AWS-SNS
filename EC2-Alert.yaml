@@ -166,7 +166,7 @@ Resources:
       Runtime: python3.9
       Environment:
         Variables:
-          TOPIC_ARN: Fn::ImportValue: !Sub "${ParentAlertStack}-TopicARN"
+          TOPIC_ARN: {'Fn::ImportValue': !Sub "${ParentAlertStack}-TopicARN"}
           DAYS: !Ref NODAYS
   # Create an IAM role for the Lambda function
   LambdaExecutionRole:
