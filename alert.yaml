@@ -4,6 +4,10 @@ Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
     - Label:
+        default: 'Parent Stacks'
+      Parameters:
+      - ParentKmsKeyStack
+    - Label:
         default: 'Alert Parameters'
       Parameters:
       - Email
@@ -14,6 +18,10 @@ Metadata:
       Parameters:
       - FallbackEmail
 Parameters:
+  ParentKmsKeyStack:
+    Description: 'Optional Stack name of parent KMS key stack based on kms-key.yaml template.'
+    Type: String
+    Default: ''
   Email:
     Description: 'Optional email address that will receive alerts.'
     Type: String
@@ -31,6 +39,7 @@ Parameters:
     Type: String
     Default: ''
 Conditions:
+  HasKmsKey: !Not [!Equals [!Ref ParentKmsKeyStack, '']]
   HasEmail: !Not [!Equals [!Ref Email, '']]
   HasHttpEndpoint: !Not [!Equals [!Ref HttpEndpoint, '']]
   HasHttpsEndpoint: !Not [!Equals [!Ref HttpsEndpoint, '']]
@@ -38,7 +47,8 @@ Conditions:
 Resources:
   Topic:
     Type: 'AWS::SNS::Topic'
-    Properties: {}
+    Properties:
+      KmsMasterKeyId: !If [HasKmsKey, {'Fn::ImportValue': !Sub '${ParentKmsKeyStack}-KeyId'}, !Ref 'AWS::NoValue']
   TopicPolicy:
     Type: 'AWS::SNS::TopicPolicy'
     Properties:
@@ -80,7 +90,8 @@ Resources:
       - !Ref Topic
   FallbackTopic:
     Type: 'AWS::SNS::Topic'
-    Properties: {}
+    Properties:
+      KmsMasterKeyId: !If [HasKmsKey, {'Fn::ImportValue': !Sub '${ParentKmsKeyStack}-KeyId'}, !Ref 'AWS::NoValue']
   NumberOfNotificationsFailedTooHighAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:

@@ -4,6 +4,10 @@ Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
     - Label:
+        default: 'Parent Stacks'
+      Parameters:
+      - ParentKmsKeyStack
+    - Label:
         default: 'Billing Parameters'
       Parameters:
       - TriggerOne
@@ -13,6 +17,10 @@ Metadata:
       - TriggerFive
 
 Parameters:
+  ParentKmsKeyStack:
+    Description: 'Optional Stack name of parent KMS key stack based on kms-key.yaml template.'
+    Type: String
+    Default: ''
   Email:
     Type: String
     Default: your@email.com
@@ -37,6 +45,8 @@ Parameters:
     Description:  'Five trigge $ alerts.'
     Type: String
     Default: '1000'
+Conditions:
+  HasKmsKey: !Not [!Equals [!Ref ParentKmsKeyStack, '']]
 Resources:
   BillingAlertOne:
     Type: AWS::CloudWatch::Alarm
@@ -130,7 +140,8 @@ Resources:
 
   BillingAlertTopic:
     Type: AWS::SNS::Topic
-
+    Properties:
+      KmsMasterKeyId: !If [HasKmsKey, {'Fn::ImportValue': !Sub '${ParentKmsKeyStack}-KeyId'}, !Ref 'AWS::NoValue']
   AlarmSubscriberEmail:
     Type: AWS::SNS::Subscription
     Properties:
