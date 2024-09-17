@@ -54,7 +54,7 @@ Resources:
       AlarmActions:
         - !Ref BillingAlertTopic
       AlarmDescription: !Join ["", [Billing Alert for $, !Ref TriggerOne]]
-      ComparisonOperator: GreaterThanThreshold
+      ComparisonOperator: LessThanThreshold
       Dimensions:
         - Name: Currency
           Value: USD
@@ -72,7 +72,7 @@ Resources:
       AlarmActions:
         - !Ref BillingAlertTopic
       AlarmDescription: !Join ["", [Billing Alert for $, !Ref TriggerTwo]]
-      ComparisonOperator: GreaterThanThreshold
+      ComparisonOperator: LessThanThreshold
       Dimensions:
         - Name: Currency
           Value: USD
@@ -90,7 +90,7 @@ Resources:
       AlarmActions:
         - !Ref BillingAlertTopic
       AlarmDescription: !Join ["", [Billing Alert for $,  !Ref TriggerThree]]
-      ComparisonOperator: GreaterThanThreshold
+      ComparisonOperator: LessThanThreshold
       Dimensions:
         - Name: Currency
           Value: USD
@@ -108,7 +108,7 @@ Resources:
       AlarmActions:
         - !Ref BillingAlertTopic
       AlarmDescription: !Join ["", [Billing Alert for $,  !Ref TriggerFour]]
-      ComparisonOperator: GreaterThanThreshold
+      ComparisonOperator: LessThanThreshold
       Dimensions:
         - Name: Currency
           Value: USD
@@ -126,7 +126,7 @@ Resources:
       AlarmActions:
         - !Ref BillingAlertTopic
       AlarmDescription: !Join ["", [Billing Alert for $,  !Ref TriggerFive]]
-      ComparisonOperator: GreaterThanThreshold
+      ComparisonOperator: LessThanThreshold
       Dimensions:
         - Name: Currency
           Value: USD
